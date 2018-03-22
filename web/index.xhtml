@@ -1,0 +1,223 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:h="http://xmlns.jcp.org/jsf/html"
+      xmlns:p="http://primefaces.org/ui"
+      xmlns:ui="http://java.sun.com/jsf/facelets"
+      xmlns:f="http://xmlns.jcp.org/jsf/core">
+    <f:view contentType="text/html" ></f:view> 
+    <h:head>
+        <title>i9SimVanet</title>
+        <script src="http://maps.google.com/maps?file=api&amp;v=2&amp;sensor=false&amp;key=AIzaSyAmzUjNab3G18ams2IOSYfJhgD6ILYYNdg" type="text/javascript"></script>
+        <script src="js/epoly.js" type="text/javascript"></script>
+        <script src="js/elabel.js" type="text/javascript"></script>
+    </h:head>
+    <h:body>
+        <p:panelGrid columns="1" columnClasses="ui-g-12 ui-md-12 ui-lg-12" layout="grid" styleClass="ui-panelgrid-blank">
+            <div class="ui-fluid">
+                <div id="controls">
+                    <h:form onsubmit="start();return false" prependId="false">
+                        <p:panelGrid columns="2" columnClasses="ui-g-12 ui-md-12 ui-lg-12" styleClass="ui-panelgrid-blank">
+                            <p:outputLabel>Ponto inicial:</p:outputLabel>
+                            <p:inputText size="50" maxlength="200" id="pontoInicial" value="Rua Walter Franco,105, Lagarto - SE"></p:inputText>
+                            <p:outputLabel>Ponto Final:</p:outputLabel>
+                            <p:inputText type="text" maxlength="200" id="pontoFinal" value="Rua do Moinho,101, Lagarto - SE" ></p:inputText>
+                            <p:outputLabel>Velocidade dos Veículos:</p:outputLabel>
+                            <p:inputText  maxlength="3" id="velocidade" value="10" ></p:inputText>
+                            <p:outputLabel>Quantidade de Veículos:</p:outputLabel>
+                            <p:inputText  maxlength="2" id="qtdVeiculos" value="1" ></p:inputText>
+                            <p:commandButton onclick="start();" value="Iniciar" ></p:commandButton>
+                        </p:panelGrid>
+                    </h:form>
+                </div>
+                <div>
+                    <p:panelGrid columns="1" columnClasses="ui-g-12 ui-md-12 ui-lg-12" styleClass="ui-panelgrid-blank">
+                        <div id="map" style="width: 800px; height: 500px;"></div>
+                    </p:panelGrid>
+                    <p:panelGrid columns="4" columnClasses="ui-g-12 ui-md-12 ui-lg-12" styleClass="ui-panelgrid-blank">
+                        <div id="step">&nbsp;</div>
+                        <div id="distanciaTotal"></div>
+                        <div id="distance"></div>
+                        <canvas id="testcanvas" width="1" height="1"></canvas>
+                    </p:panelGrid>
+                </div>
+            </div> 
+        </p:panelGrid>
+
+        <script type="text/javascript">
+            //<![CDATA[
+            if (GBrowserIsCompatible()) {
+                //Atribuei o mapa a variavel map.
+                var map = new GMap2(document.getElementById("map"));
+                //Adiciona um controle ao mapa que permite o usuario alternar entre mapa, satalite ou hibrido.
+                map.addControl(new GMapTypeControl());
+                //Define onde o mapa deve ser iniciado.
+                map.setCenter(new GLatLng(-10.9145, -37.6690), 15);
+                //Objeto que traça a rota.
+                var dirn = new GDirections();
+                //Velocidade do movimento em metros.
+                var step = 5; // metros
+                //Tempo do movimento
+                var tick = 100; // millisegundos
+                var poly;
+                var eol;
+                //Objeto que recebe a imagem do carro.
+                var car = new GIcon();
+                //car.image = "caricon.png"
+                car.iconSize = new GSize(32, 18);
+                car.iconAnchor = new GPoint(16, 9);
+                var marker;
+                var k = 0;
+                var x = 0;
+                var tempo = 2000;
+                var stepnum = 0;
+                var speed = "";
+                var img = new Image();
+                var img2 = new Image();
+                img.src = "cariconl.png";
+                img2.src = "caricon2.png";
+                var angle;
+                var canvas;
+                var lastVertex = 0;
+                var qtdVeiculos;
+                var id = 10;
+
+                //Função que retorna a distância em radianos entre dois pontos.
+                function bearing(from, to) {
+                    // Converter em radianos.
+                    var lat1 = from.latRadians();
+                    var lon1 = from.lngRadians();
+                    var lat2 = to.latRadians();
+                    var lon2 = to.lngRadians();
+
+                    // Calcular o ângulo.
+                    var angle = -Math.atan2(Math.sin(lon1 - lon2) * Math.cos(lat2), Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon1 - lon2));
+                    if (angle < 0.0)
+                        angle += Math.PI * 2.0;
+
+                    if (angle == 0) {
+                        crash;
+                    }
+                    return angle;
+                }
+
+                //Função que plota o carro no mapa.
+                function plotcar() {
+                    var cosa = Math.cos(angle);
+                    var sina = Math.sin(angle);
+                    canvas.clearRect(0, 0, 32, 32);
+                    canvas.save();
+                    canvas.rotate(angle);
+                    canvas.translate(16 * sina + 16 * cosa, 16 * cosa - 16 * sina);
+                    canvas.drawImage(img, -16, -16);
+                    canvas.restore();
+                }
+                //Função da animação do mapa
+                function animate(d) {
+                    //d e a distancia já percorrida.
+                    //Aqui e testado se a distancia já percorrida é maior que a total!
+                    if (d > eol) {
+                        document.getElementById("step").innerHTML = "<b>Trajeto Completado<\/b>";
+                        document.getElementById("distance").innerHTML = "Distancia Percorrida: " + (d / 1000.0).toFixed(2) + " km ";
+                        return;
+                    }
+                    //pega a posição atual
+                    var p = poly.GetPointAtDistance(d);
+                    //verifica se a distancia atual e maior que 180 dividido pelos metros definidos: step = Padrão(5)
+                    if (k++ >= 180 / step) {
+                        //recentraliza o mapa para o ponto p;
+                        map.panTo(p);
+                        k = 0;
+                    }
+                    marker.setPoint(p);
+                    document.getElementById("distance").innerHTML = "Distancia Percorrida: " + (d / 1000.0).toFixed(2) + " km " + speed;
+
+                    //----------INICIO DO TREXO QUE VERIFICA AS PROXIMAS RUAS-----------
+                    if (stepnum + 1 < dirn.getRoute(0).getNumSteps()) {
+                        if (dirn.getRoute(0).getStep(stepnum).getPolylineIndex() < poly.GetIndexAtDistance(d)) {
+                            stepnum++;
+                            var steptext = dirn.getRoute(0).getStep(stepnum).getDescriptionHtml();
+                            document.getElementById("step").innerHTML = "<b>Next:<\/b> " + steptext;
+                            var stepdist = dirn.getRoute(0).getStep(stepnum - 1).getDistance().meters;
+                            var steptime = dirn.getRoute(0).getStep(stepnum - 1).getDuration().seconds;
+                            var stepspeed = document.getElementById("velocidade").value;
+                            step = stepspeed / 2.5;
+                            speed = "<br />Velocidade Atual: " + stepspeed + " Km/h";
+                        }
+                    } else {
+                        if (dirn.getRoute(0).getStep(stepnum).getPolylineIndex() < poly.GetIndexAtDistance(d)) {
+                            document.getElementById("step").innerHTML = "<b>Proxímo: Em direção ao ponto final!<\/b>";
+                        }
+                    }
+                    //--------FIM DO TREXO QUE VERIFICA AS PROXIMAS RUAS-----------
+
+                    //Realiza a movimentação recursivamente
+                    if (poly.GetIndexAtDistance(d) > lastVertex) {
+                        lastVertex = poly.GetIndexAtDistance(d);
+                        if (lastVertex == poly.getVertexCount()) {
+                            lastVertex -= 1;
+                        }
+                        while (poly.getVertex(lastVertex - 1).equals(poly.getVertex(lastVertex))) {
+                            lastVertex -= 1;
+                        }
+
+                        angle = bearing(poly.getVertex(lastVertex - 1), poly.getVertex(lastVertex));
+                        plotcar();
+                    }
+                    setTimeout("animate(" + (d + step) + ")", tick);
+                }
+
+                //Função que carrega a plotagem e inicia a animação
+                GEvent.addListener(dirn, "load", function () {
+                    //Faz os controles sumirem
+                    document.getElementById("controls").style.display = "none";
+                    poly = dirn.getPolyline();
+                    //Distancia total do percuso.
+                    eol = poly.Distance();
+                    map.setCenter(poly.getVertex(0), 17);
+                    while (x++ < qtdVeiculos) {
+                        if (x !== 1) {
+                            tempo = (tempo + 2000);
+                            id++;
+                        }
+                        marker = new ELabel(poly.getVertex(0),  '<canvas id="carcanvas'+ id +'" width="32" height="32"><\/canvas>', null, new GSize(-16, 16));
+                        map.addOverlay(marker);
+                        canvas = document.getElementById("carcanvas" + id).getContext('2d');
+                        var p0 = poly.getVertex(0);
+                        var p1 = poly.getVertex(1);
+                        angle = bearing(p0, p1);
+                        plotcar();
+                        var steptext = dirn.getRoute(0).getStep(stepnum).getDescriptionHtml();
+                        document.getElementById("step").innerHTML = steptext;
+                        document.getElementById("distanciaTotal").innerHTML = "Distancia total: " + (eol / 1000).toFixed(2) + "km";
+                        setTimeout("animate(0)", tempo); // Tempo para iniciar o evento de movimentação no mapa
+                    }
+                });
+
+                //Função que da o alerta quando a localização não for encontrada
+                GEvent.addListener(dirn, "error", function () {
+                    alert("Localização não encontrada. Código: " + dirn.getStatus().code);
+                });
+
+                //FUNÇÃO QUE INICIAR O PERCUSSO
+                function start() {
+                    //Ponto inicial
+                    var startpoint = document.getElementById("pontoInicial").value;
+                    //Ponto final
+                    var endpoint = document.getElementById("pontoFinal").value;
+                    /*Seta no objeto de direções o ponto inicial e final.
+                     Este método loadFromWaypoints recebe como parametro uma matriz,
+                     contendo cordenadas e desenha a polilinha sobreposta ao mapa.*/
+                    qtdVeiculos = document.getElementById("qtdVeiculos").value;
+                    dirn.loadFromWaypoints([startpoint, endpoint], {
+                        getPolyline: true,
+                        getSteps: true
+                    });
+                }
+
+            }
+            //]]>
+        </script>
+    </h:body>
+</html>
+
